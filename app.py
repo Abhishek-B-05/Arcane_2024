@@ -1,58 +1,105 @@
-import mysql.connector
 import pandas as pd
 import streamlit as st
 from datetime import datetime
+import pymysql
 import matplotlib.pyplot as plt
 
 # Database connection setup
-def create_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="abhi2005",
-        database="stats"
+def connection():
+    return pymysql.connect(
+        charset="utf8mb4",
+        connect_timeout=10,
+        cursorclass=pymysql.cursors.DictCursor,
+        db="defaultdb",
+        host="mysql-2d683784-arcane-2024.h.aivencloud.com",
+        password="AVNS_Gxjzg5ruqCMrTvIAi5z",
+        read_timeout=10,
+        port=28309,
+        user="avnadmin",
+        write_timeout=10,
     )
+
+# Function to create tables if they don't exist
+def create_tables():
+    conn = connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Machines (
+                    machine_id INT PRIMARY KEY AUTO_INCREMENT,
+                    name VARCHAR(255) NOT NULL,
+                    type VARCHAR(255) NOT NULL
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Energy_Usage (
+                    usage_id INT PRIMARY KEY AUTO_INCREMENT,
+                    machine_id INT NOT NULL,
+                    timestamp DATETIME NOT NULL,
+                    energy_usage FLOAT NOT NULL,
+                    production_status BOOLEAN NOT NULL,
+                    FOREIGN KEY (machine_id) REFERENCES Machines(machine_id)
+                );
+            """)
+        conn.commit()
+    except Exception as e:
+        print(f"An error occurred while creating tables: {e}")
+    finally:
+        conn.close()
 
 # Function to add a new machine
 def add_machine(machid, name, machine_type):
-    connection = create_connection()
-    cursor = connection.cursor()
-    cursor.execute("INSERT INTO machines (machine_id, name, type) VALUES (%s, %s, %s)", (machid, name, machine_type))
-    connection.commit()
-    cursor.close()
-    connection.close()
+    conn = connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("INSERT INTO Machines (machine_id, name, type) VALUES (%s, %s, %s)", (machid, name, machine_type))
+            conn.commit()
+    except Exception as e:
+        st.error(f"An error occurred while adding the machine: {e}")
+    finally:
+        conn.close()
 
 # Function to delete a machine
 def delete_machine(machid):
-    connection = create_connection()
-    cursor = connection.cursor()
-    cursor.execute("DELETE FROM machines WHERE machine_id = %s", (machid,))
-    connection.commit()
-    cursor.close()
-    connection.close()
+    conn = connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM Machines WHERE machine_id = %s", (machid,))
+            conn.commit()
+    except Exception as e:
+        st.error(f"An error occurred while deleting the machine: {e}")
+    finally:
+        conn.close()
 
 # Function to add energy usage
 def add_energy_usage(usageid, machid, timestamp, usage, production_status):
-    connection = create_connection()
-    cursor = connection.cursor()
-    cursor.execute(
-        "INSERT INTO energy_usage (usage_id, machine_id, timestamp, energy_usage, production_status) VALUES (%s, %s, %s, %s, %s)",
-        (usageid, machid, timestamp, usage, production_status)
-    )
-    connection.commit()
-    cursor.close()
-    connection.close()
+    conn = connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO Energy_Usage (usage_id, machine_id, timestamp, energy_usage, production_status) VALUES (%s, %s, %s, %s, %s)",
+                (usageid, machid, timestamp, usage, production_status)
+            )
+            conn.commit()
+    except Exception as e:
+        st.error(f"An error occurred while adding energy usage: {e}")
+    finally:
+        conn.close()
 
 # Function to delete energy usage entry
 def delete_energy_usage(usageid):
-    connection = create_connection()
-    cursor = connection.cursor()
-    cursor.execute("DELETE FROM energy_usage WHERE usage_id = %s", (usageid,))
-    connection.commit()
-    cursor.close()
-    connection.close()
+    conn = connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM Energy_Usage WHERE usage_id = %s", (usageid,))
+            conn.commit()
+    except Exception as e:
+        st.error(f"An error occurred while deleting energy usage: {e}")
+    finally:
+        conn.close()
 
-# Function to calculate and display energy usage statistics
+# Function to get analysis data
 def get_analysis_data():
     query = '''
     SELECT 
@@ -61,22 +108,28 @@ def get_analysis_data():
         MAX(eu.energy_usage) AS peak_usage, 
         MIN(eu.energy_usage) AS lowest_usage 
     FROM 
-        energy_usage eu 
+        Energy_Usage eu 
     JOIN 
-        machines m ON eu.machine_id = m.machine_id 
+        Machines m ON eu.machine_id = m.machine_id 
     GROUP BY 
         m.machine_id, m.name
     '''
-    connection = create_connection()
-    cursor = connection.cursor(dictionary=True)
-    cursor.execute(query)
-    analysis_data = cursor.fetchall()
-    cursor.close()
-    connection.close()
-    return pd.DataFrame(analysis_data)
+    conn = connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+            analysis_data = cursor.fetchall()
+            return pd.DataFrame(analysis_data)
+    except Exception as e:
+        st.error(f"An error occurred while fetching analysis data: {e}")
+    finally:
+        conn.close()
 
 # Streamlit UI
 st.title("Machine and Energy Usage Management")
+
+# Create tables if they don't exist
+create_tables()
 
 # Tabs for each section
 tab1, tab2, tab3 = st.tabs(["Machine Details", "Energy Usage", "Energy Analysis"])
@@ -87,16 +140,16 @@ with tab1:
     
     # Add Machine
     st.subheader("Add a New Machine")
-    machid = st.number_input("Machine ID", min_value=1, step=1)
-    name = st.text_input("Machine Name")
-    machine_type = st.text_input("Machine Type")
+    machid = st.number_input("Machine ID", min_value=1, step=1, key="add_machine_id")
+    name = st.text_input("Machine Name", key="add_machine_name")
+    machine_type = st.text_input("Machine Type", key="add_machine_type")
     if st.button("Add Machine"):
         add_machine(machid, name, machine_type)
         st.success("Machine added successfully.")
 
     # Delete Machine
     st.subheader("Delete Machine")
-    delete_id = st.number_input("Machine ID to Delete", min_value=1, step=1)
+    delete_id = st.number_input("Machine ID to Delete", min_value=1, step=1, key="delete_machine_id")
     if st.button("Delete Machine"):
         delete_machine(delete_id)
         st.success("Machine deleted successfully.")
@@ -107,18 +160,18 @@ with tab2:
 
     # Add Energy Usage
     st.subheader("Add Energy Usage Entry")
-    usageid = st.number_input("Usage ID", min_value=1, step=1)
-    machid = st.number_input("Machine ID", min_value=1, step=1)
+    usageid = st.number_input("Usage ID", min_value=1, step=1, key="add_usage_id")
+    machid = st.number_input("Machine ID", min_value=1, step=1, key="add_energy_machine_id")
     timestamp = datetime.now()
-    usage = st.number_input("Energy Used (kWh)", min_value=0)
-    production_status = st.selectbox("Running Status", ["T", "F"]) == "T"
+    usage = st.number_input("Energy Used (kWh)", min_value=0, key="add_energy_usage")
+    production_status = st.selectbox("Running Status", ["T", "F"], key="add_energy_status") == "T"
     if st.button("Add Energy Usage"):
         add_energy_usage(usageid, machid, timestamp, usage, production_status)
         st.success("Energy usage added successfully.")
 
     # Delete Energy Usage
     st.subheader("Delete Energy Usage Entry")
-    delete_usage_id = st.number_input("Usage ID to Delete", min_value=1, step=1)
+    delete_usage_id = st.number_input("Usage ID to Delete", min_value=1, step=1, key="delete_usage_id")
     if st.button("Delete Energy Usage"):
         delete_energy_usage(delete_usage_id)
         st.success("Energy usage deleted successfully.")
