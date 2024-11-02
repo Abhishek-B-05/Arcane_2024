@@ -178,7 +178,7 @@ with tab2:
 
 # Energy Analysis Tab
 with tab3:
-    st.header("Energy Usage Analysis")
+    st.header("Energy Usage Analysis") 
     
     # Calculate and display analysis
     if st.button("Show Analysis"):
