@@ -1,2 +1,3 @@
 # Arcane_2024
-We going solo with this one.......
+The repository contains Machine and Energy Usage Management System, a simple program constructed using Python and SQL and Streamlit as frontend.
+This is not the limit of this project since automation can take this a long way. 
