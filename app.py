@@ -55,7 +55,11 @@ def add_machine(name, machine_type):
         with conn.cursor() as cursor:
             cursor.execute("INSERT INTO Machines (name, type) VALUES (%s, %s)", (name, machine_type))
             conn.commit()
-            st.success("Machine added successfully.")
+            
+            # Fetch the last inserted machine ID
+            cursor.execute("SELECT LAST_INSERT_ID() AS last_id")
+            last_id = cursor.fetchone()['last_id']
+            st.success(f"Machine added successfully with ID: {last_id}.")
     except Exception as e:
         st.error(f"An error occurred while adding the machine: {e}")
     finally:
