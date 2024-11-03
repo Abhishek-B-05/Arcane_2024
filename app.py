@@ -1,105 +1,61 @@
+import gradio as gr
 import pandas as pd
-import streamlit as st
-from datetime import datetime
 import pymysql
-import matplotlib.pyplot as plt
+from datetime import datetime
 
 # Database connection setup
-def connection():
+def create_connection():
     return pymysql.connect(
-        charset="utf8mb4",
-        connect_timeout=10,
-        cursorclass=pymysql.cursors.DictCursor,
-        db="defaultdb",
         host="mysql-2d683784-arcane-2024.h.aivencloud.com",
-        password="AVNS_Gxjzg5ruqCMrTvIAi5z",
-        read_timeout=10,
-        port=28309,
         user="avnadmin",
-        write_timeout=10,
+        password="AVNS_Gxjzg5ruqCMrTvIAi5z",
+        database="defaultdb",
+        port=28309,
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
     )
-
-# Function to create tables if they don't exist
-def create_tables():
-    conn = connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS Machines (
-                    machine_id INT PRIMARY KEY AUTO_INCREMENT,
-                    name VARCHAR(255) NOT NULL,
-                    type VARCHAR(255) NOT NULL
-                );
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS Energy_Usage (
-                    usage_id INT PRIMARY KEY AUTO_INCREMENT,
-                    machine_id INT NOT NULL,
-                    timestamp DATETIME NOT NULL,
-                    energy_usage FLOAT NOT NULL,
-                    production_status BOOLEAN NOT NULL,
-                    FOREIGN KEY (machine_id) REFERENCES Machines(machine_id)
-                );
-            """)
-        conn.commit()
-    except Exception as e:
-        print(f"An error occurred while creating tables: {e}")
-    finally:
-        conn.close()
 
 # Function to add a new machine
 def add_machine(machid, name, machine_type):
-    conn = connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("INSERT INTO Machines (machine_id, name, type) VALUES (%s, %s, %s)", (machid, name, machine_type))
-            conn.commit()
-    except Exception as e:
-        st.error(f"An error occurred while adding the machine: {e}")
-    finally:
-        conn.close()
+    conn = create_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("INSERT INTO machines (machine_id, name, type) VALUES (%s, %s, %s)", (machid, name, machine_type))
+        conn.commit()
+    conn.close()
+    return "Machine added successfully."
 
 # Function to delete a machine
 def delete_machine(machid):
-    conn = connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM Machines WHERE machine_id = %s", (machid,))
-            conn.commit()
-    except Exception as e:
-        st.error(f"An error occurred while deleting the machine: {e}")
-    finally:
-        conn.close()
+    conn = create_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("DELETE FROM machines WHERE machine_id = %s", (machid,))
+        conn.commit()
+    conn.close()
+    return "Machine deleted successfully."
 
 # Function to add energy usage
-def add_energy_usage(usageid, machid, timestamp, usage, production_status):
-    conn = connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO Energy_Usage (usage_id, machine_id, timestamp, energy_usage, production_status) VALUES (%s, %s, %s, %s, %s)",
-                (usageid, machid, timestamp, usage, production_status)
-            )
-            conn.commit()
-    except Exception as e:
-        st.error(f"An error occurred while adding energy usage: {e}")
-    finally:
-        conn.close()
+def add_energy_usage(usageid, machid, usage, production_status):
+    timestamp = datetime.now()
+    conn = create_connection()
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO energy_usage (usage_id, machine_id, timestamp, energy_usage, production_status) VALUES (%s, %s, %s, %s, %s)",
+            (usageid, machid, timestamp, usage, production_status)
+        )
+        conn.commit()
+    conn.close()
+    return "Energy usage added successfully."
 
 # Function to delete energy usage entry
 def delete_energy_usage(usageid):
-    conn = connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM Energy_Usage WHERE usage_id = %s", (usageid,))
-            conn.commit()
-    except Exception as e:
-        st.error(f"An error occurred while deleting energy usage: {e}")
-    finally:
-        conn.close()
+    conn = create_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("DELETE FROM energy_usage WHERE usage_id = %s", (usageid,))
+        conn.commit()
+    conn.close()
+    return "Energy usage deleted successfully."
 
-# Function to get analysis data
+# Function to calculate and display energy usage statistics
 def get_analysis_data():
     query = '''
     SELECT 
@@ -108,91 +64,64 @@ def get_analysis_data():
         MAX(eu.energy_usage) AS peak_usage, 
         MIN(eu.energy_usage) AS lowest_usage 
     FROM 
-        Energy_Usage eu 
+        energy_usage eu 
     JOIN 
-        Machines m ON eu.machine_id = m.machine_id 
+        machines m ON eu.machine_id = m.machine_id 
     GROUP BY 
         m.machine_id, m.name
     '''
-    conn = connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(query)
-            analysis_data = cursor.fetchall()
-            return pd.DataFrame(analysis_data)
-    except Exception as e:
-        st.error(f"An error occurred while fetching analysis data: {e}")
-    finally:
-        conn.close()
+    conn = create_connection()
+    with conn.cursor() as cursor:
+        cursor.execute(query)
+        analysis_data = cursor.fetchall()
+    conn.close()
+    return pd.DataFrame(analysis_data).to_markdown()
 
-# Streamlit UI
-st.title("Machine and Energy Usage Management")
+# Gradio Interface
+with gr.Blocks() as demo:
+    gr.Markdown("# Machine and Energy Usage Management")
 
-# Create tables if they don't exist
-create_tables()
+    with gr.Tab("Machine Details"):
+        gr.Markdown("### Add a New Machine")
+        machid = gr.Number(label="Machine ID", precision=0)
+        name = gr.Textbox(label="Machine Name")
+        machine_type = gr.Textbox(label="Machine Type")
+        add_machine_button = gr.Button("Add Machine")
+        add_machine_output = gr.Textbox()
 
-# Tabs for each section
-tab1, tab2, tab3 = st.tabs(["Machine Details", "Energy Usage", "Energy Analysis"])
+        add_machine_button.click(add_machine, inputs=[machid, name, machine_type], outputs=add_machine_output)
 
-# Machine Details Tab
-with tab1:
-    st.header("Machine Details")
-    
-    # Add Machine
-    st.subheader("Add a New Machine")
-    machid = st.number_input("Machine ID", min_value=1, step=1, key="add_machine_id")
-    name = st.text_input("Machine Name", key="add_machine_name")
-    machine_type = st.text_input("Machine Type", key="add_machine_type")
-    if st.button("Add Machine"):
-        add_machine(machid, name, machine_type)
-        st.success("Machine added successfully.")
+        gr.Markdown("### Delete a Machine")
+        delete_machid = gr.Number(label="Machine ID to Delete", precision=0)
+        delete_machine_button = gr.Button("Delete Machine")
+        delete_machine_output = gr.Textbox()
 
-    # Delete Machine
-    st.subheader("Delete Machine")
-    delete_id = st.number_input("Machine ID to Delete", min_value=1, step=1, key="delete_machine_id")
-    if st.button("Delete Machine"):
-        delete_machine(delete_id)
-        st.success("Machine deleted successfully.")
+        delete_machine_button.click(delete_machine, inputs=delete_machid, outputs=delete_machine_output)
 
-# Energy Usage Tab
-with tab2:
-    st.header("Energy Usage")
+    with gr.Tab("Energy Usage"):
+        gr.Markdown("### Add Energy Usage Entry")
+        usageid = gr.Number(label="Usage ID", precision=0)
+        machine_id = gr.Number(label="Machine ID", precision=0)
+        usage = gr.Number(label="Energy Used (kWh)", precision=2)
+        production_status = gr.Checkbox(label="Running Status (Checked for True)")
 
-    # Add Energy Usage
-    st.subheader("Add Energy Usage Entry")
-    usageid = st.number_input("Usage ID", min_value=1, step=1, key="add_usage_id")
-    machid = st.number_input("Machine ID", min_value=1, step=1, key="add_energy_machine_id")
-    timestamp = datetime.now()
-    usage = st.number_input("Energy Used (kWh)", min_value=0, key="add_energy_usage")
-    production_status = st.selectbox("Running Status", ["T", "F"], key="add_energy_status") == "T"
-    if st.button("Add Energy Usage"):
-        add_energy_usage(usageid, machid, timestamp, usage, production_status)
-        st.success("Energy usage added successfully.")
+        add_usage_button = gr.Button("Add Energy Usage")
+        add_usage_output = gr.Textbox()
 
-    # Delete Energy Usage
-    st.subheader("Delete Energy Usage Entry")
-    delete_usage_id = st.number_input("Usage ID to Delete", min_value=1, step=1, key="delete_usage_id")
-    if st.button("Delete Energy Usage"):
-        delete_energy_usage(delete_usage_id)
-        st.success("Energy usage deleted successfully.")
+        add_usage_button.click(add_energy_usage, inputs=[usageid, machine_id, usage, production_status], outputs=add_usage_output)
 
-# Energy Analysis Tab
-with tab3:
-    st.header("Energy Usage Analysis") 
-    
-    # Calculate and display analysis
-    if st.button("Show Analysis"):
-        analysis_df = get_analysis_data()
-        if not analysis_df.empty:
-            st.write("### Energy Usage Analysis")
-            st.write(analysis_df)
-            
-            # Plot
-            fig, ax = plt.subplots()
-            analysis_df.plot(kind="bar", x="name", y="avg_usage", ax=ax, legend=False)
-            ax.set_title("Average Energy Usage per Machine")
-            ax.set_xlabel("Machine Name")
-            ax.set_ylabel("Average Energy Usage (kWh)")
-            st.pyplot(fig)
-        else:
-            st.write("No data available for analysis.")
+        gr.Markdown("### Delete Energy Usage Entry")
+        delete_usageid = gr.Number(label="Usage ID to Delete", precision=0)
+        delete_usage_button = gr.Button("Delete Energy Usage")
+        delete_usage_output = gr.Textbox()
+
+        delete_usage_button.click(delete_energy_usage, inputs=delete_usageid, outputs=delete_usage_output)
+
+    with gr.Tab("Energy Analysis"):
+        gr.Markdown("### Energy Usage Analysis")
+        analysis_button = gr.Button("Show Analysis")
+        analysis_output = gr.Markdown()
+
+        analysis_button.click(get_analysis_data, outputs=analysis_output)
+
+demo.launch()
